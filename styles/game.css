@@ -380,7 +380,7 @@ body {
     to { transform: rotate(360deg); }
 }
 
-/* Buttons */
+/* Buttons - FIXED VERSION */
 .button-group {
     display: flex;
     flex-direction: column;
@@ -407,7 +407,16 @@ body {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: 2px;
+    z-index: 400;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Make sure child elements don't block clicks */
+.game-button * {
+    pointer-events: none;
 }
 
 .game-button.large {
@@ -449,19 +458,22 @@ body {
     opacity: 0.8;
 }
 
-/* Loading indicator */
+/* Loading indicator - FIXED VERSION */
 .loading-indicator {
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    display: flex;
     flex-direction: column;
     align-items: center;
     gap: 15px;
     z-index: 400;
     color: white;
     display: none;
+}
+
+.loading-indicator:not(.hidden) {
+    display: flex;
 }
 
 .loading-spinner {
@@ -590,29 +602,4 @@ body {
     .stat-item, .instruction-item {
         border-width: 2px;
     }
-}
-
-
-/* Add to game.css if not already there */
-.game-button {
-    position: relative;
-    min-width: 200px;
-    padding: 15px 25px;
-    background: linear-gradient(45deg, rgba(64, 128, 255, 0.3), rgba(255, 100, 150, 0.3));
-    border: 2px solid rgba(255, 255, 255, 0.4);
-    border-radius: 25px;
-    color: white;
-    cursor: pointer;
-    font-family: 'Orbitron', Arial, sans-serif;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    transition: all 0.3s ease;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    pointer-events: all; /* Ensure button can be clicked */
-    z-index: 400; /* Make sure it's above other elements */
 }
