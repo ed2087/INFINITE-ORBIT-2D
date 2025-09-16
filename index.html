@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Infinite Orbit 2D - 60 Minute Electronic Survival</title>
+    <link rel="stylesheet" href="styles/game.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="gameContainer">
+        <!-- Main game canvas -->
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- Game UI overlay -->
+        <div id="gameUI">
+            <div id="scoreDisplay">0</div>
+            <div id="phaseDisplay">GEOMETRIC</div>
+            <div id="timeDisplay">0:00</div>
+            <div id="audioIndicator" class="audio-inactive"></div>
+        </div>
+
+        <!-- Mobile controls -->
+        <div id="mobileControls" class="mobile-hidden">
+            <div class="control-btn" id="leftBtn" data-direction="left">
+                <span class="control-icon">←</span>
+                <span class="control-label">LEFT</span>
+            </div>
+            <div class="control-btn" id="rightBtn" data-direction="right">
+                <span class="control-icon">→</span>
+                <span class="control-label">RIGHT</span>
+            </div>
+        </div>
+
+        <!-- Game Over overlay -->
+        <div id="gameOver" class="overlay hidden">
+            <div class="overlay-content">
+                <h1 class="game-title">SYNC LOST</h1>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">Survival Time</span>
+                        <span class="stat-value" id="finalTime">0:00</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Distance</span>
+                        <span class="stat-value" id="finalScore">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Phase Reached</span>
+                        <span class="stat-value" id="finalPhase">GEOMETRIC</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Best Distance</span>
+                        <span class="stat-value" id="bestScore">0</span>
+                    </div>
+                </div>
+                
+                <div id="newRecord" class="new-record hidden">
+                    <div class="record-text">NEW RECORD!</div>
+                    <div class="record-glow"></div>
+                </div>
+                
+                <div class="button-group">
+                    <button id="restartBtn" class="game-button primary">
+                        <span class="button-text">RECONNECT</span>
+                        <span class="button-subtitle">Space / Tap</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Start menu overlay -->
+        <div id="startMenu" class="overlay">
+            <div class="overlay-content">
+                <h1 class="game-title">INFINITE ORBIT 2D</h1>
+                <div class="subtitle">60 Minute Electronic Survival</div>
+                
+                <div class="menu-section">
+                    <h3>How to Play</h3>
+                    <div class="instructions">
+                        <div class="instruction-item">
+                            <span class="key-hint">A/D or ←/→</span>
+                            <span>Rotate orbital spheres</span>
+                        </div>
+                        <div class="instruction-item">
+                            <span class="key-hint">ESC</span>
+                            <span>Pause game</span>
+                        </div>
+                        <div class="instruction-item mobile-only">
+                            <span class="key-hint">Touch</span>
+                            <span>Use on-screen controls</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="menu-section">
+                    <h3>Survival Challenge</h3>
+                    <p>Survive the full 60-minute electronic mix as shapes evolve, mutate, and become increasingly unpredictable. Each collision creates new hybrid offspring with combined DNA traits.</p>
+                </div>
+
+                <div class="audio-setup">
+                    <h3>Audio Setup</h3>
+                    <p>Click to enable audio for the full experience</p>
+                    <div id="audioStatus" class="audio-status">Audio: Disabled</div>
+                </div>
+                
+                <div class="button-group">
+                    <button id="startBtn" class="game-button primary large">
+                        <span class="button-text">BEGIN ORBIT</span>
+                        <span class="button-subtitle">Space / Tap</span>
+                    </button>
+                </div>
+
+                <div class="best-score-display">
+                    Best Distance: <span id="menuBestScore">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pause overlay -->
+        <div id="pauseMenu" class="overlay hidden">
+            <div class="overlay-content">
+                <h2 class="pause-title">PAUSED</h2>
+                <div class="current-stats">
+                    <div class="stat-row">
+                        <span>Time:</span> <span id="pauseTime">0:00</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Phase:</span> <span id="pausePhase">GEOMETRIC</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Distance:</span> <span id="pauseScore">0</span>
+                    </div>
+                </div>
+                
+                <div class="button-group">
+                    <button id="resumeBtn" class="game-button primary">
+                        <span class="button-text">RESUME</span>
+                        <span class="button-subtitle">ESC</span>
+                    </button>
+                    <button id="mainMenuBtn" class="game-button secondary">
+                        <span class="button-text">MAIN MENU</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audio loading indicator -->
+        <div id="audioLoading" class="loading-indicator hidden">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Loading Audio...</div>
+        </div>
+
+        <!-- Performance debug panel (hidden by default) -->
+        <div id="debugPanel" class="debug-panel hidden">
+            <div class="debug-title">Debug Info</div>
+            <div id="debugContent"></div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="src/core/Game.js"></script>
+</body>
+</html>
