@@ -70,7 +70,7 @@ export class OrbitPlayer {
         this.updateTrail();
         this.updatePulse();
         
-        // Update power-up effects
+        // Update power-up effects updateBassAnalysis
         this.updatePowerUps();
         
         // Track performance for adaptive difficulty
@@ -114,24 +114,106 @@ export class OrbitPlayer {
         if (!audioManager) {
             this.audioReactiveScale = 1.0;
             this.beatScale = 1.0;
+            this.sphereRadius = 12; // Reset to default
             return;
         }
         
-        // Scale based on audio amplitude
-        this.audioReactiveScale = 1.0 + (audioManager.currentAmplitude * 0.2);
+        const baseSize = 12; // Default sphere size
+        const minSize = 7;   // Smallest during calm moments  
+        const maxSize = 16;  // Largest during intense moments
         
-        // Beat-reactive scaling
+        // Use relative bass intensity rather than absolute values
+        const bassIntensity = audioManager.currentBass;
+        const recentBassAverage = audioManager.recentBassAverage || 0.3; // Fallback if not available
+        
+        // Calculate bass relative to recent average (this creates the dancing effect)
+        const relativeBass = Math.max(0, bassIntensity - recentBassAverage);
+        const bassBoost = relativeBass * 8; // Scale the relative difference
+        
+        // Base size varies with energy level (subtle background changes)
+        const energySizes = [8, 9, 10, 11, 12]; // Small range for base size
+        let targetSize = energySizes[audioManager.energyLevel] || baseSize;
+        
+        // Add the bass dancing effect on top of base size
+        targetSize += bassBoost;
+        
+        // Beat pulsing (quick rhythmic changes)
         const beatStrength = audioManager.getBeatStrength();
-        this.beatScale = 1.0 + (beatStrength * 0.3);
+        const beatPulse = beatStrength * beatStrength * 4; // Squared for more dramatic pulses
+        targetSize += beatPulse;
         
-        // Frequency-reactive glow
-        this.glowIntensity = 0.8 + (audioManager.currentAmplitude * 0.6);
+        // Bass spikes for dramatic moments
+        if (audioManager.isBassSpikeActive()) {
+            const spikeIntensity = audioManager.getBassSpikeIntensity() - recentBassAverage;
+            targetSize += Math.max(0, spikeIntensity * 6);
+        }
         
-        // Bass-reactive orbit size changes
-        if (audioManager.currentBass > 0.7) {
-            this.orbitRadius = Math.min(this.canvasWidth, this.canvasHeight) * (0.15 + audioManager.currentBass * 0.05);
+        // Much faster smoothing for more responsive dancing
+        const smoothingFactor = 0.3; // Increased from 0.1 for more responsiveness
+        this.sphereRadius = this.sphereRadius + (targetSize - this.sphereRadius) * smoothingFactor;
+        
+        // Clamp to bounds
+        this.sphereRadius = Math.max(minSize, Math.min(maxSize, this.sphereRadius));
+        
+        // Additional scaling effects (these multiply with the base size changes)
+        this.audioReactiveScale = 0.9 + (relativeBass * 0.4); // 0.9 to 1.3 range
+        this.beatScale = 1.0 + (beatStrength * 0.15); // Small additional beat scaling
+        
+        // Glow intensity
+        this.glowIntensity = 0.6 + (relativeBass * 0.8) + (beatStrength * 0.4);
+        
+        // Orbit radius changes (more subtle)
+        const defaultRadius = Math.min(this.canvasWidth, this.canvasHeight) * 0.15;
+        if (relativeBass > 0.3) {
+            const targetOrbit = defaultRadius * (1.0 + relativeBass * 0.15);
+            this.orbitRadius = this.orbitRadius + (targetOrbit - this.orbitRadius) * 0.1;
+        } else {
+            // Return to default orbit size
+            this.orbitRadius = this.orbitRadius + (defaultRadius - this.orbitRadius) * 0.05;
         }
     }
+
+    updateBassAnalysis() {
+    // Track bass history for spike detection
+    this.bassHistory.push(this.currentBass);
+    if (this.bassHistory.length > 180) { // 3 seconds at 60fps
+        this.bassHistory.shift();
+    }
+    
+    // Calculate recent bass average (this is key for dancing effect)
+    if (this.bassHistory.length > 30) {
+        // Use last 30 frames (0.5 seconds) for recent average
+        const recentFrames = this.bassHistory.slice(-30);
+        this.recentBassAverage = recentFrames.reduce((a, b) => a + b) / recentFrames.length;
+        
+        // Calculate longer average for comparison
+        const longerFrames = this.bassHistory.slice(-90); // 1.5 seconds
+        const longerAverage = longerFrames.reduce((a, b) => a + b) / longerFrames.length;
+        
+        // Variance calculation
+        const variance = recentFrames.reduce((sum, val) => {
+            return sum + Math.pow(val - this.recentBassAverage, 2);
+        }, 0) / recentFrames.length;
+        this.bassVariance = Math.sqrt(variance);
+    }
+    
+    // Rest of the bass spike detection logic...
+    const currentTime = this.audioContext ? this.audioContext.currentTime : Date.now() / 1000;
+    const bassThreshold = this.recentBassAverage + (this.bassVariance * 1.5);
+    
+    if (this.currentBass > bassThreshold && this.currentBass > 0.4) {
+        this.bassSpikes.push({
+            time: currentTime,
+            intensity: this.currentBass,
+            threshold: bassThreshold
+        });
+    }
+    
+    // Clean old spikes
+    this.bassSpikes = this.bassSpikes.filter(spike => 
+        currentTime - spike.time < 1.0
+    );
+}
     
     updateTrail() {
         // Add current positions to trail
@@ -358,14 +440,14 @@ export class OrbitPlayer {
             const sphereX = this.centerX + Math.cos(sphereAngle) * this.orbitRadius;
             const sphereY = this.centerY + Math.sin(sphereAngle) * this.orbitRadius;
             
-            // Calculate current sphere scale
+            // Calculate current sphere scale (combines audio reactivity and beat scaling)
             const currentScale = this.audioReactiveScale * this.beatScale;
-            const currentRadius = this.sphereRadius * currentScale;
+            const currentRadius = this.sphereRadius * currentScale; // Now uses dynamic sphereRadius
             
-            // Sphere glow effect
+            // Sphere glow effect (enhanced during intense moments)
             if (this.glowIntensity > 0.5) {
                 ctx.shadowColor = sphereColors[i];
-                ctx.shadowBlur = this.glowIntensity * 15;
+                ctx.shadowBlur = this.glowIntensity * (currentRadius * 0.8); // Scale glow with size
             }
             
             // Main sphere gradient
@@ -384,14 +466,14 @@ export class OrbitPlayer {
             
             ctx.shadowBlur = 0;
             
-            // Pulse effect
+            // Pulse effect (outer ring)
             const pulseIntensity = Math.sin(this.pulsePhase) * 0.3 + 0.7;
             ctx.strokeStyle = sphereColors[i];
-            ctx.lineWidth = 2;
-            ctx.globalAlpha = pulseIntensity;
+            ctx.lineWidth = Math.max(1, currentRadius * 0.1); // Scale line width with sphere size
+            ctx.globalAlpha = pulseIntensity * 0.6;
             
             ctx.beginPath();
-            ctx.arc(sphereX, sphereY, currentRadius + 5, 0, Math.PI * 2);
+            ctx.arc(sphereX, sphereY, currentRadius + (currentRadius * 0.3), 0, Math.PI * 2);
             ctx.stroke();
             
             ctx.globalAlpha = 1;

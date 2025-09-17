@@ -9,6 +9,9 @@ import { MutationSystem } from '../systems/MutationSystem.js';
 import { ProjectileSystem } from '../systems/ProjectileSystem.js';
 import { ParticleSystem } from '../systems/ParticleSystem.js';
 import { PhaseSystem } from '../systems/PhaseSystem.js';
+import { IntelligentSpawnSystem } from '../systems/IntelligentSpawnSystem.js';
+import { PowerUpSystem } from '../systems/PowerUpSystem.js';
+import { MathUtils } from '../utils/MathUtils.js';
 
 export class Game {
     constructor() {
@@ -29,6 +32,8 @@ export class Game {
         this.mutationSystem = null;
         this.projectileSystem = null;
         this.particleSystem = null;
+        this.intelligentSpawnSystem = null;
+        this.powerUpSystem = null;
         
         // Game entities
         this.player = null;
@@ -41,6 +46,11 @@ export class Game {
         this.survivalTime = 0;
         this.spawnTimer = 0;
         this.spawnInterval = CONFIG.SPAWN_RATE.MIN;
+        
+        // Musical event system
+        this.musicalEventHandlers = new Map();
+        this.screenShakeIntensity = 0;
+        this.screenShakeDuration = 0;
         
         // Performance tracking
         this.frameCount = 0;
@@ -70,10 +80,15 @@ export class Game {
             this.collisionSystem = new CollisionSystem(this.mutationSystem, this.particleSystem);
             this.projectileSystem = new ProjectileSystem();
             this.phaseSystem = new PhaseSystem();
+            this.intelligentSpawnSystem = new IntelligentSpawnSystem();
+            this.powerUpSystem = new PowerUpSystem(this.particleSystem);
             
             // Initialize game entities
             this.player = new OrbitPlayer(this.canvas.width, this.canvas.height);
             this.createBackgroundStars();
+            
+            // Setup musical event system
+            this.setupMusicalEventHandlers();
             
             // Initialize audio (don't await - let it load in background)
             this.audioManager.initialize().catch(error => {
@@ -92,6 +107,148 @@ export class Game {
         } catch (error) {
             console.error('❌ Failed to initialize game:', error);
         }
+    }
+    
+    setupMusicalEventHandlers() {
+        // Listen for musical events from PhaseSystem
+        if (typeof window !== 'undefined') {
+            window.addEventListener('musicalGameEvent', (event) => {
+                this.handleMusicalEvent(event.detail);
+            });
+        }
+    }
+    
+    handleMusicalEvent(eventData) {
+        console.log(`🎵 Handling musical event: ${eventData.type} (${eventData.intensity})`);
+        
+        switch (eventData.type) {
+            case 'bass_drop_panic':
+                this.triggerBassPanicWave(eventData.intensity);
+                break;
+            case 'energy_buildup_assault':
+                this.triggerCoordinatedAssault(eventData.intensity);
+                break;
+            case 'chaos_burst':
+                this.triggerChaosBurst(eventData.intensity);
+                break;
+            case 'phrase_finale':
+                this.triggerPhraseFinale(eventData.intensity);
+                break;
+            case 'phase_transition':
+                this.triggerPhaseTransitionEffects(eventData);
+                break;
+        }
+    }
+    
+    triggerBassPanicWave(intensity) {
+        // Force panic attacks on susceptible shapes
+        let panicCount = 0;
+        for (const shape of this.shapes) {
+            if (shape.panicAttackSusceptible && Math.random() < intensity) {
+                if (shape.triggerPanicAttack) {
+                    shape.triggerPanicAttack();
+                    panicCount++;
+                }
+            }
+        }
+        
+        // Screen shake effect
+        if (intensity > 0.8) {
+            this.screenShakeIntensity = 10;
+            this.screenShakeDuration = 30;
+        }
+        
+        console.log(`🚨 Bass Panic Wave: ${panicCount} shapes in panic mode`);
+    }
+    
+    triggerCoordinatedAssault(intensity) {
+        // Mark shapes for coordinated attack
+        const shapesToCoordinate = Math.floor(intensity * 8);
+        let coordinatedCount = 0;
+        
+        for (let i = 0; i < this.shapes.length && coordinatedCount < shapesToCoordinate; i++) {
+            const shape = this.shapes[i];
+            if (shape.state === 'aiming') {
+                shape.coordinatedAttack = true;
+                shape.aimDuration = Math.min(shape.aimDuration, 20);
+                coordinatedCount++;
+            }
+        }
+        
+        console.log(`⚡ Coordinated Assault: ${coordinatedCount} shapes attacking together`);
+    }
+    
+    triggerChaosBurst(intensity) {
+        // Spawn multiple chaotic shapes
+        for (let i = 0; i < intensity * 3; i++) {
+            setTimeout(() => {
+                const position = ShapeFactory.createSpawnPosition();
+                const chaosShapes = ['plasma', 'lightning', 'vortex', 'boomerang'];
+                const shapeType = MathUtils.randomChoice(chaosShapes);
+                const shape = ShapeFactory.createShape(shapeType, position.x, position.y);
+                
+                // Make them extra aggressive
+                shape.speed *= 1.5;
+                shape.aimDuration *= 0.5;
+                if (shape.triggerPanicAttack) {
+                    shape.triggerPanicAttack();
+                }
+                
+                this.shapes.push(shape);
+            }, i * 100);
+        }
+        
+        console.log(`💥 Chaos Burst: Spawning ${Math.floor(intensity * 3)} chaotic shapes`);
+    }
+    
+    triggerPhraseFinale(intensity) {
+        // Create a dramatic finale pattern
+        const centerX = this.canvas.width / 2;
+        const centerY = this.canvas.height / 2;
+        const shapeCount = Math.floor(intensity * 6);
+        
+        for (let i = 0; i < shapeCount; i++) {
+            const angle = (i / shapeCount) * Math.PI * 2;
+            const distance = 200 + Math.random() * 100;
+            const x = centerX + Math.cos(angle) * distance;
+            const y = centerY + Math.sin(angle) * distance;
+            
+            if (x > 0 && x < this.canvas.width && y > 0 && y < this.canvas.height) {
+                const shape = ShapeFactory.createRandomShape(x, y, this.phaseSystem.currentPhase, this.audioManager);
+                shape.coordinatedAttack = true;
+                shape.aimDuration = 60 + (i * 10); // Staggered attacks
+                this.shapes.push(shape);
+            }
+        }
+        
+        console.log(`🎭 Phrase Finale: ${shapeCount} shapes in formation`);
+    }
+    
+    triggerPhaseTransitionEffects(eventData) {
+        // Visual and audio effects for phase transitions
+        this.particleSystem.createEvolutionExplosion(
+            this.canvas.width / 2, 
+            this.canvas.height / 2, 
+            {
+                particleCount: 40,
+                colors: this.getPhaseColors(eventData.phase),
+                duration: 100,
+                shockwaveRadius: 120
+            }
+        );
+    }
+    
+    getPhaseColors(phase) {
+        const phaseColorMap = {
+            GEOMETRIC: ['#00ff00', '#0080ff', '#8000ff'],
+            ORGANIC: ['#ff8000', '#ff0080', '#80ff00'],
+            MECHANICAL: ['#c0c0c0', '#404040', '#808080'],
+            HYBRID: ['#ff00ff', '#00ffff', '#ffff00'],
+            CHAOS: ['#ff0000', '#ff8000', '#ffff00'],
+            ENDGAME: ['#ff0000', '#000000', '#ffffff']
+        };
+        
+        return phaseColorMap[phase] || ['#ffffff', '#808080', '#000000'];
     }
     
     startGameLoop() {
@@ -130,8 +287,17 @@ export class Game {
                 break;
         }
         
+        // Update screen shake
+        this.updateScreenShake();
+        
         // Always update performance stats
         this.updatePerformanceStats();
+    }
+    
+    updateScreenShake() {
+        if (this.screenShakeDuration > 0) {
+            this.screenShakeDuration--;
+        }
     }
     
     updateGameplay(deltaTime) {
@@ -139,16 +305,25 @@ export class Game {
         this.gameTime = this.audioManager.getCurrentTime();
         this.survivalTime = this.gameTime;
         
-        // Update phase system
+        // Update phase system (now with musical awareness)
         this.phaseSystem.update(this.gameTime, this.audioManager);
         
         // Update player
         this.player.update(deltaTime, this.audioManager);
         
-        // Handle shape spawning
-        this.updateShapeSpawning();
+        // Update intelligent spawning system
+        this.intelligentSpawnSystem.update(this.player, this.shapes, 
+            this.projectileSystem.getProjectiles(), this.audioManager, this.phaseSystem);
         
-        // Update shapes (aiming and firing)
+        // Update power-up system
+        this.powerUpSystem.update(deltaTime, this.player, this.shapes, 
+            this.projectileSystem.getProjectiles(), this.audioManager);
+        this.powerUpSystem.checkCollisions(this.player);
+        
+        // Handle shape spawning (now musically reactive)
+        this.updateMusicalShapeSpawning();
+        
+        // Update shapes with musical behavior
         this.updateShapes(deltaTime);
         
         // Update projectiles
@@ -165,14 +340,11 @@ export class Game {
         
         // Update score
         this.updateScore();
-        
-        // Check for special events
-        this.checkSpecialEvents();
     }
     
-    updateShapeSpawning() {
+    updateMusicalShapeSpawning() {
         this.spawnTimer++;
-        this.spawnInterval = this.phaseSystem.getSpawnInterval();
+        this.spawnInterval = this.phaseSystem.getSpawnInterval(); // Now includes musical reactivity
         
         if (this.spawnTimer >= this.spawnInterval) {
             this.spawnShape();
@@ -181,20 +353,20 @@ export class Game {
     }
     
     spawnShape() {
-        const position = ShapeFactory.createSpawnPosition();
-        const currentPhase = this.phaseSystem.currentPhase;
-        
-        const shape = ShapeFactory.createRandomShape(
-            position.x, 
-            position.y, 
-            currentPhase, 
-            this.audioManager
+        // Use intelligent spawning instead of random spawning
+        const shape = this.intelligentSpawnSystem.generateMusicalSpawn(
+            this.audioManager, 
+            this.phaseSystem, 
+            this.canvas.width, 
+            this.canvas.height
         );
         
-        // Apply phase-specific modifications
-        shape.canReattack = Math.random() < this.phaseSystem.getReattackChance();
-        
-        this.shapes.push(shape);
+        if (shape) {
+            // Apply phase-specific modifications
+            shape.canReattack = Math.random() < this.phaseSystem.getReattackChance();
+            this.shapes.push(shape);
+        }
+        // If shape is null, no valid spawn was found - skip this spawn cycle
     }
     
     updateShapes(deltaTime) {
@@ -226,9 +398,12 @@ export class Game {
             this.shapes.push(...collisionResult.newShapes);
         }
         
-        // Remove collided shapes
+        // Remove collided shapes and spawn power-ups
         if (collisionResult.shapesToRemove) {
             for (const shape of collisionResult.shapesToRemove) {
+                // Spawn power-up chance when shape is destroyed
+                this.powerUpSystem.spawnPowerUp(shape.x, shape.y, this.audioManager);
+                
                 const index = this.shapes.indexOf(shape);
                 if (index !== -1) {
                     this.shapes.splice(index, 1);
@@ -281,66 +456,6 @@ export class Game {
         const timeBonus = Math.floor(this.survivalTime);
         const difficultyBonus = Math.floor(this.phaseSystem.difficultyMultiplier * 10);
         this.score = timeBonus + difficultyBonus;
-    }
-    
-    checkSpecialEvents() {
-        const specialEvent = this.phaseSystem.shouldTriggerSpecialEvent();
-        
-        if (specialEvent) {
-            this.triggerSpecialEvent(specialEvent);
-        }
-    }
-    
-    triggerSpecialEvent(event) {
-        console.log(`🌟 Special Event: ${event.type} (intensity: ${event.intensity})`);
-        
-        switch (event.type) {
-            case 'phase_finale':
-                this.triggerPhaseFinale(event.intensity);
-                break;
-            case 'chaos_burst':
-                this.triggerChaosBurst(event.intensity);
-                break;
-            case 'survival_wave':
-                this.triggerSurvivalWave(event.intensity);
-                break;
-        }
-    }
-    
-    triggerPhaseFinale(intensity) {
-        // Spawn multiple shapes simultaneously
-        for (let i = 0; i < 5; i++) {
-            setTimeout(() => this.spawnShape(), i * 100);
-        }
-    }
-    
-    triggerChaosBurst(intensity) {
-        // Randomly mutate existing projectiles
-        const projectiles = this.projectileSystem.getProjectiles();
-        for (const projectile of projectiles.slice(0, 10)) {
-            if (projectile.dna) {
-                projectile.dna.mutate();
-            }
-        }
-    }
-    
-    triggerSurvivalWave(intensity) {
-        // Create a coordinated attack pattern
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
-        
-        for (let i = 0; i < 8; i++) {
-            const angle = (i / 8) * Math.PI * 2;
-            const distance = 200;
-            const x = centerX + Math.cos(angle) * distance;
-            const y = centerY + Math.sin(angle) * distance;
-            
-            if (x > 0 && x < this.canvas.width && y > 0 && y < this.canvas.height) {
-                const shape = ShapeFactory.createRandomShape(x, y, 'ENDGAME', this.audioManager);
-                shape.canReattack = true;
-                this.shapes.push(shape);
-            }
-        }
     }
     
     updateBackgroundStars() {
@@ -400,7 +515,8 @@ export class Game {
         
         // Apply screen shake if needed
         if (this.shouldApplyScreenShake()) {
-            this.canvas.applyScreenShake(5, 10);
+            const intensity = this.screenShakeDuration > 0 ? this.screenShakeIntensity : 5;
+            this.canvas.applyScreenShake(intensity, 10);
         }
         
         // Render game entities
@@ -421,6 +537,9 @@ export class Game {
     renderGameEntities() {
         // Render particles (background layer)
         this.particleSystem.render(this.canvas.getContext());
+        
+        // Render power-ups
+        this.powerUpSystem.render(this.canvas.getContext());
         
         // Render shapes (aiming)
         for (const shape of this.shapes) {
@@ -482,6 +601,11 @@ export class Game {
             `Difficulty: ${this.phaseSystem.difficultyMultiplier.toFixed(2)}x`
         ];
         
+        if (this.audioManager) {
+            stats.push(`Bass: ${(this.audioManager.currentBass * 100).toFixed(0)}%`);
+            stats.push(`Energy: ${this.audioManager.energyLevel}`);
+        }
+        
         for (let i = 0; i < stats.length; i++) {
             this.canvas.drawText(
                 stats[i], 
@@ -494,9 +618,10 @@ export class Game {
     }
     
     shouldApplyScreenShake() {
-        // Add screen shake during intense moments
+        // Screen shake during intense moments or musical events
         return this.phaseSystem.currentPhase === 'CHAOS' || 
-               this.phaseSystem.currentPhase === 'ENDGAME';
+               this.phaseSystem.currentPhase === 'ENDGAME' ||
+               this.screenShakeDuration > 0;
     }
     
     updatePerformanceStats() {
@@ -532,10 +657,16 @@ export class Game {
         this.survivalTime = 0;
         this.spawnTimer = 0;
         
+        // Reset musical event system
+        this.screenShakeIntensity = 0;
+        this.screenShakeDuration = 0;
+        
         // Reset all systems
         this.phaseSystem.reset();
         this.particleSystem.clear();
         this.projectileSystem.clear();
+        if (this.intelligentSpawnSystem) this.intelligentSpawnSystem.reset?.();
+        if (this.powerUpSystem) this.powerUpSystem.reset?.();
         this.shapes = [];
         
         // Reset player
@@ -580,10 +711,20 @@ export class Game {
             pauseMenu.classList.remove('hidden');
             
             // Update pause menu stats
-            document.getElementById('pauseTime').textContent = 
-                `${Math.floor(this.survivalTime / 60)}:${Math.floor(this.survivalTime % 60).toString().padStart(2, '0')}`;
-            document.getElementById('pausePhase').textContent = this.phaseSystem.currentPhase;
-            document.getElementById('pauseScore').textContent = Math.floor(this.score);
+            const pauseTime = document.getElementById('pauseTime');
+            const pausePhase = document.getElementById('pausePhase');
+            const pauseScore = document.getElementById('pauseScore');
+            
+            if (pauseTime) {
+                pauseTime.textContent = 
+                    `${Math.floor(this.survivalTime / 60)}:${Math.floor(this.survivalTime % 60).toString().padStart(2, '0')}`;
+            }
+            if (pausePhase) {
+                pausePhase.textContent = this.phaseSystem.currentPhase;
+            }
+            if (pauseScore) {
+                pauseScore.textContent = Math.floor(this.score);
+            }
         }
     }
     
@@ -631,11 +772,18 @@ export class Game {
             gameOverScreen.classList.remove('hidden');
             
             // Update game over stats
-            document.getElementById('finalScore').textContent = Math.floor(this.score);
-            document.getElementById('bestScore').textContent = Math.floor(this.bestScore);
-            document.getElementById('finalTime').textContent = 
-                `${Math.floor(this.survivalTime / 60)}:${Math.floor(this.survivalTime % 60).toString().padStart(2, '0')}`;
-            document.getElementById('finalPhase').textContent = this.phaseSystem.currentPhase;
+            const finalScore = document.getElementById('finalScore');
+            const bestScore = document.getElementById('bestScore');
+            const finalTime = document.getElementById('finalTime');
+            const finalPhase = document.getElementById('finalPhase');
+            
+            if (finalScore) finalScore.textContent = Math.floor(this.score);
+            if (bestScore) bestScore.textContent = Math.floor(this.bestScore);
+            if (finalTime) {
+                finalTime.textContent = 
+                    `${Math.floor(this.survivalTime / 60)}:${Math.floor(this.survivalTime % 60).toString().padStart(2, '0')}`;
+            }
+            if (finalPhase) finalPhase.textContent = this.phaseSystem.currentPhase;
         }
         
         // Create dramatic explosion
@@ -754,14 +902,22 @@ window.addEventListener('load', () => {
     });
 });
 
-// Add UI event handlers after DOM loads
+// Clean up the DOMContentLoaded section - remove duplicates
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM loaded, setting up UI handlers...');
+    
     // Start button
     const startBtn = document.getElementById('startBtn');
     if (startBtn) {
-        startBtn.addEventListener('click', () => {
+        startBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            console.log('Start button clicked!');
+            
             if (window.game && window.game.isInitialized) {
                 window.game.startGame();
+            } else {
+                console.log('Game not ready yet');
             }
         });
     }
@@ -791,18 +947,24 @@ document.addEventListener('DOMContentLoaded', () => {
     if (mainMenuBtn) {
         mainMenuBtn.addEventListener('click', () => {
             if (window.game) {
-                // Show start menu, hide pause menu
                 document.getElementById('startMenu').classList.remove('hidden');
                 document.getElementById('pauseMenu').classList.add('hidden');
                 window.game.gameState = 'menu';
                 
-                // Stop audio
                 if (window.game.audioManager.audioElement) {
                     window.game.audioManager.audioElement.pause();
                 }
             }
         });
     }
+    
+    // Initialize mobile controls after a delay
+    setTimeout(() => {
+        if (window.game && window.game.inputManager && window.game.inputManager.isMobile) {
+            console.log('Reinitializing mobile controls...');
+            window.game.inputManager.setupVirtualControls();
+        }
+    }, 1000);
     
     // Keyboard controls
     document.addEventListener('keydown', (event) => {
@@ -858,7 +1020,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     
-    // Update audio status periodically
     setInterval(updateAudioStatus, 1000);
 });
 

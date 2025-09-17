@@ -6,7 +6,6 @@ export class InputManager {
         
         // Touch support
         this.touches = new Map();
-        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         
         // Input state
         this.inputState = {
@@ -16,8 +15,12 @@ export class InputManager {
             restart: false
         };
         
-        // Virtual controls for mobile
+        // Virtual controls - always enabled
         this.virtualButtons = new Map();
+        
+        // Gamepad support
+        this.gamepadIndex = null;
+        this.gamepadDeadzone = 0.3;
         
         this.initialize();
     }
@@ -26,7 +29,22 @@ export class InputManager {
         this.setupKeyboardEvents();
         this.setupMouseEvents();
         this.setupTouchEvents();
-        this.setupVirtualControls();
+        this.setupGamepadEvents();
+        
+        // Setup virtual controls when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                setTimeout(() => {
+                    this.setupVirtualControls();
+                    this.setupMouseVirtualControls();
+                }, 100);
+            });
+        } else {
+            setTimeout(() => {
+                this.setupVirtualControls();
+                this.setupMouseVirtualControls();
+            }, 100);
+        }
     }
     
     setupKeyboardEvents() {
@@ -74,8 +92,6 @@ export class InputManager {
     }
     
     setupTouchEvents() {
-        if (!this.isMobile) return;
-        
         document.addEventListener('touchstart', (event) => {
             event.preventDefault();
             
@@ -115,11 +131,33 @@ export class InputManager {
             
             this.updateVirtualControls();
         }, { passive: false });
+        
+        document.addEventListener('touchcancel', (event) => {
+            event.preventDefault();
+            
+            for (const touch of event.changedTouches) {
+                this.touches.delete(touch.identifier);
+            }
+            
+            this.updateVirtualControls();
+        }, { passive: false });
+    }
+    
+    setupGamepadEvents() {
+        window.addEventListener('gamepadconnected', (event) => {
+            console.log('Gamepad connected:', event.gamepad.id);
+            this.gamepadIndex = event.gamepad.index;
+        });
+        
+        window.addEventListener('gamepaddisconnected', (event) => {
+            console.log('Gamepad disconnected:', event.gamepad.id);
+            if (this.gamepadIndex === event.gamepad.index) {
+                this.gamepadIndex = null;
+            }
+        });
     }
     
     setupVirtualControls() {
-        if (!this.isMobile) return;
-        
         const leftBtn = document.getElementById('leftBtn');
         const rightBtn = document.getElementById('rightBtn');
         
@@ -145,6 +183,77 @@ export class InputManager {
         window.addEventListener('resize', () => {
             setTimeout(() => this.updateVirtualButtonBounds(), 100);
         });
+        
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => this.updateVirtualButtonBounds(), 100);
+        });
+    }
+    
+    setupMouseVirtualControls() {
+        const leftBtn = document.getElementById('leftBtn');
+        const rightBtn = document.getElementById('rightBtn');
+        
+        if (leftBtn) {
+            leftBtn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                const button = this.virtualButtons.get('left');
+                if (button) {
+                    button.active = true;
+                    button.element.classList.add('active');
+                    this.updateInputState();
+                }
+            });
+            
+            leftBtn.addEventListener('mouseup', (e) => {
+                e.preventDefault();
+                const button = this.virtualButtons.get('left');
+                if (button) {
+                    button.active = false;
+                    button.element.classList.remove('active');
+                    this.updateInputState();
+                }
+            });
+            
+            leftBtn.addEventListener('mouseleave', (e) => {
+                const button = this.virtualButtons.get('left');
+                if (button) {
+                    button.active = false;
+                    button.element.classList.remove('active');
+                    this.updateInputState();
+                }
+            });
+        }
+        
+        if (rightBtn) {
+            rightBtn.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                const button = this.virtualButtons.get('right');
+                if (button) {
+                    button.active = true;
+                    button.element.classList.add('active');
+                    this.updateInputState();
+                }
+            });
+            
+            rightBtn.addEventListener('mouseup', (e) => {
+                e.preventDefault();
+                const button = this.virtualButtons.get('right');
+                if (button) {
+                    button.active = false;
+                    button.element.classList.remove('active');
+                    this.updateInputState();
+                }
+            });
+            
+            rightBtn.addEventListener('mouseleave', (e) => {
+                const button = this.virtualButtons.get('right');
+                if (button) {
+                    button.active = false;
+                    button.element.classList.remove('active');
+                    this.updateInputState();
+                }
+            });
+        }
     }
     
     updateVirtualButtonBounds() {
@@ -156,11 +265,14 @@ export class InputManager {
     }
     
     updateVirtualControls() {
-        if (!this.isMobile) return;
-        
         // Reset virtual button states
         for (const button of this.virtualButtons.values()) {
-            button.active = false;
+            if (!button.active) { // Don't reset if actively pressed by mouse
+                button.active = false;
+                if (button.element) {
+                    button.element.classList.remove('active');
+                }
+            }
         }
         
         // Check which virtual buttons are being touched
@@ -168,6 +280,9 @@ export class InputManager {
             for (const [name, button] of this.virtualButtons) {
                 if (this.isPointInBounds(touch.x, touch.y, button.bounds)) {
                     button.active = true;
+                    if (button.element) {
+                        button.element.classList.add('active');
+                    }
                 }
             }
         }
@@ -182,24 +297,50 @@ export class InputManager {
                y <= bounds.bottom;
     }
     
+    getGamepadInput() {
+        if (this.gamepadIndex === null) return { left: false, right: false };
+        
+        const gamepad = navigator.getGamepads()[this.gamepadIndex];
+        if (!gamepad) return { left: false, right: false };
+        
+        // Left stick or D-pad
+        const leftStickX = gamepad.axes[0] || 0;
+        const dpadLeft = gamepad.buttons[14]?.pressed || false;
+        const dpadRight = gamepad.buttons[15]?.pressed || false;
+        
+        // Face buttons (A/X for left, B/Circle for right)
+        const buttonA = gamepad.buttons[0]?.pressed || false;
+        const buttonB = gamepad.buttons[1]?.pressed || false;
+        
+        return {
+            left: leftStickX < -this.gamepadDeadzone || dpadLeft || buttonA,
+            right: leftStickX > this.gamepadDeadzone || dpadRight || buttonB
+        };
+    }
+    
     updateInputState() {
         // Keyboard controls
         const leftKeys = this.keys.get('ArrowLeft') || this.keys.get('KeyA');
         const rightKeys = this.keys.get('ArrowRight') || this.keys.get('KeyD');
         
-        // Virtual controls (mobile)
+        // Virtual controls (touch/mouse)
         const leftVirtual = this.virtualButtons.get('left')?.active || false;
         const rightVirtual = this.virtualButtons.get('right')?.active || false;
         
-        // Combine inputs
-        this.inputState.left = leftKeys || leftVirtual;
-        this.inputState.right = rightKeys || rightVirtual;
+        // Gamepad controls
+        const gamepadInput = this.getGamepadInput();
+        
+        // Combine all inputs
+        this.inputState.left = leftKeys || leftVirtual || gamepadInput.left;
+        this.inputState.right = rightKeys || rightVirtual || gamepadInput.right;
         this.inputState.pause = this.keys.get('Escape') || false;
         this.inputState.restart = this.keys.get('Space') || false;
     }
     
     // Public API
     getInputState() {
+        // Update gamepad state on each call since gamepad state doesn't generate events
+        this.updateInputState();
         return { ...this.inputState };
     }
     
@@ -223,6 +364,11 @@ export class InputManager {
         return Array.from(this.touches.values());
     }
     
+    getGamepadCount() {
+        const gamepads = navigator.getGamepads();
+        return Array.from(gamepads).filter(gp => gp !== null).length;
+    }
+    
     // Utility methods
     anyInputActive() {
         return this.inputState.left || 
@@ -233,11 +379,13 @@ export class InputManager {
     
     // For debugging
     getDebugInfo() {
+        const gamepadInput = this.getGamepadInput();
         return {
-            isMobile: this.isMobile,
             activeKeys: Array.from(this.keys.entries()).filter(([_, pressed]) => pressed),
             inputState: this.inputState,
             touchCount: this.touches.size,
+            gamepadConnected: this.gamepadIndex !== null,
+            gamepadInput: gamepadInput,
             virtualButtons: Object.fromEntries(
                 Array.from(this.virtualButtons.entries()).map(([name, btn]) => [name, btn.active])
             )
@@ -246,13 +394,6 @@ export class InputManager {
     
     // Clean up event listeners
     destroy() {
-        document.removeEventListener('keydown', this.handleKeyDown);
-        document.removeEventListener('keyup', this.handleKeyUp);
-        document.removeEventListener('mousemove', this.handleMouseMove);
-        document.removeEventListener('mousedown', this.handleMouseDown);
-        document.removeEventListener('mouseup', this.handleMouseUp);
-        document.removeEventListener('touchstart', this.handleTouchStart);
-        document.removeEventListener('touchmove', this.handleTouchMove);
-        document.removeEventListener('touchend', this.handleTouchEnd);
+        console.log('InputManager destroyed');
     }
 }

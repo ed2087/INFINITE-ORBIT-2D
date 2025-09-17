@@ -10,6 +10,12 @@ export class PhaseSystem {
         this.difficultyMultiplier = 1.0;
         this.spawnRateMultiplier = 1.0;
         this.phaseProgress = 0;
+        
+        // Musical phase tracking
+        this.musicalIntensityHistory = [];
+        this.coordinatedAttackCooldown = 0;
+        this.lastSpecialEventTime = 0;
+        this.musicalEventQueue = [];
     }
     
     update(gameTime, audioManager) {
@@ -24,8 +30,178 @@ export class PhaseSystem {
             this.handlePhaseTransition(previousPhase, this.currentPhase, gameTime);
         }
         
-        // Update difficulty scaling
-        this.updateDifficultyScaling(gameTime, audioManager);
+        // Update difficulty scaling with musical awareness
+        this.updateMusicalDifficultyScaling(gameTime, audioManager);
+        
+        // Update musical event system
+        this.updateMusicalEvents(audioManager);
+        
+        // Update cooldowns
+        if (this.coordinatedAttackCooldown > 0) {
+            this.coordinatedAttackCooldown--;
+        }
+    }
+    
+    updateMusicalDifficultyScaling(gameTime, audioManager) {
+        // Base difficulty progression over time
+        const timeProgress = gameTime / CONFIG.SONG_DURATION;
+        this.difficultyMultiplier = 1.0 + (timeProgress * 3.0);
+        
+        // Phase-specific difficulty modifiers
+        const phaseMultipliers = {
+            GEOMETRIC: 1.0,
+            ORGANIC: 1.2,
+            MECHANICAL: 1.5,
+            HYBRID: 2.0,
+            CHAOS: 2.5,
+            ENDGAME: 3.0
+        };
+        
+        this.difficultyMultiplier *= phaseMultipliers[this.currentPhase] || 1.0;
+        
+        // Musical reactivity enhancements
+        if (audioManager) {
+            // Track musical intensity over time
+            this.musicalIntensityHistory.push(audioManager.currentSongEnergy);
+            if (this.musicalIntensityHistory.length > 600) { // 10 seconds of history
+                this.musicalIntensityHistory.shift();
+            }
+            
+            // Base audio-reactive difficulty
+            const audioIntensity = audioManager.getIntensityMultiplier();
+            this.difficultyMultiplier *= audioIntensity;
+            
+            // Energy level based scaling
+            const energyMultipliers = [0.7, 0.85, 1.0, 1.3, 1.8];
+            this.difficultyMultiplier *= energyMultipliers[audioManager.energyLevel] || 1.0;
+            
+            // Musical trend bonuses
+            if (audioManager.energyTrend === 1) { // Building energy
+                this.difficultyMultiplier *= 1.2;
+            }
+            
+            // Bass spike intensity scaling
+            if (audioManager.isBassSpikeActive()) {
+                const spikeIntensity = audioManager.getBassSpikeIntensity();
+                this.difficultyMultiplier *= (1.0 + spikeIntensity * 0.8);
+            }
+            
+            // Beat-synced spawn rate increases
+            const beatStrength = audioManager.getBeatStrength();
+            this.spawnRateMultiplier = 1.0 + (beatStrength * 1.2);
+            
+            // Strong beat spawn bursts
+            if (beatStrength > 0.8 && this.coordinatedAttackCooldown === 0) {
+                this.spawnRateMultiplier *= 2.0;
+                this.coordinatedAttackCooldown = 60; // 1 second cooldown
+            }
+        }
+        
+        // Phase progression within current phase
+        const progressionBonus = this.phaseProgress * 0.5;
+        this.difficultyMultiplier += progressionBonus;
+    }
+    
+    updateMusicalEvents(audioManager) {
+        if (!audioManager) return;
+        
+        const currentTime = Date.now();
+        
+        // Process queued musical events
+        this.musicalEventQueue = this.musicalEventQueue.filter(event => {
+            if (currentTime >= event.triggerTime) {
+                this.executeMusicalEvent(event);
+                return false; // Remove from queue
+            }
+            return true;
+        });
+        
+        // Check for new musical event triggers
+        this.checkForMusicalEventTriggers(audioManager, currentTime);
+    }
+    
+    checkForMusicalEventTriggers(audioManager, currentTime) {
+        // Prevent event spam
+        if (currentTime - this.lastSpecialEventTime < 2000) return;
+        
+        // Bass drop event (panic wave)
+        if (audioManager.shouldTriggerPanicAttack() && 
+            audioManager.energyLevel >= 2) {
+            
+            this.queueMusicalEvent({
+                type: 'bass_drop_panic',
+                intensity: audioManager.getBassSpikeIntensity(),
+                delay: 0
+            });
+            this.lastSpecialEventTime = currentTime;
+        }
+        
+        // Energy buildup event (coordinated assault)
+        if (audioManager.energyTrend === 1 && 
+            audioManager.energyLevel >= 3 && 
+            this.getAverageRecentIntensity() > 0.6) {
+            
+            this.queueMusicalEvent({
+                type: 'energy_buildup_assault',
+                intensity: audioManager.currentSongEnergy,
+                delay: 500 // Half second delay to build tension
+            });
+            this.lastSpecialEventTime = currentTime;
+        }
+        
+        // Chaos burst (during high-energy chaos moments)
+        if (audioManager.energyLevel === 4 && 
+            audioManager.strongBeats.length >= 4 &&
+            Math.random() < 0.1) {
+            
+            this.queueMusicalEvent({
+                type: 'chaos_burst',
+                intensity: 2.0 + Math.random(),
+                delay: 200
+            });
+            this.lastSpecialEventTime = currentTime;
+        }
+        
+        // Musical phrase finale (end of musical sections)
+        if (this.phaseProgress > 0.85 && Math.random() < 0.15) {
+            this.queueMusicalEvent({
+                type: 'phrase_finale',
+                intensity: 1.5 + this.phaseProgress,
+                delay: 0
+            });
+            this.lastSpecialEventTime = currentTime;
+        }
+    }
+    
+    queueMusicalEvent(event) {
+        event.triggerTime = Date.now() + event.delay;
+        this.musicalEventQueue.push(event);
+        console.log(`🎵 Queued musical event: ${event.type} (intensity: ${event.intensity.toFixed(2)})`);
+    }
+    
+    executeMusicalEvent(event) {
+        console.log(`🎶 Executing musical event: ${event.type}`);
+        
+        // Create event data for the game to process
+        const eventData = {
+            type: event.type,
+            intensity: event.intensity,
+            timestamp: Date.now()
+        };
+        
+        // Dispatch custom event for the game to handle
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('musicalGameEvent', { 
+                detail: eventData 
+            }));
+        }
+    }
+    
+    getAverageRecentIntensity() {
+        if (this.musicalIntensityHistory.length < 60) return 0;
+        
+        const recent = this.musicalIntensityHistory.slice(-60); // Last second
+        return recent.reduce((sum, val) => sum + val) / recent.length;
     }
     
     getCurrentPhase(gameTime) {
@@ -34,7 +210,7 @@ export class PhaseSystem {
                 return phaseName;
             }
         }
-        return 'ENDGAME'; // Fallback for overtime
+        return 'ENDGAME';
     }
     
     getPhaseProgress(gameTime) {
@@ -59,64 +235,35 @@ export class PhaseSystem {
         this.phaseTransitions.push(transition);
         this.phaseStartTime = gameTime;
         
-        // Trigger phase-specific effects
         this.triggerPhaseEffects(toPhase);
     }
     
     triggerPhaseEffects(phase) {
+        // Queue phase transition event
+        this.queueMusicalEvent({
+            type: 'phase_transition',
+            phase: phase,
+            intensity: 2.0,
+            delay: 0
+        });
+        
         switch (phase) {
             case 'ORGANIC':
                 console.log('🌱 Organic phase: Curved shapes emerging...');
                 break;
-                
             case 'MECHANICAL':
                 console.log('⚙️ Mechanical phase: Complex patterns activating...');
                 break;
-                
             case 'HYBRID':
                 console.log('🧬 Hybrid phase: Mutations becoming dominant...');
                 break;
-                
             case 'CHAOS':
                 console.log('🌪️ Chaos phase: All patterns unleashed...');
                 break;
-                
             case 'ENDGAME':
                 console.log('💀 Endgame phase: Maximum difficulty reached...');
                 break;
         }
-    }
-    
-    updateDifficultyScaling(gameTime, audioManager) {
-        // Base difficulty progression over time
-        const timeProgress = gameTime / CONFIG.SONG_DURATION;
-        this.difficultyMultiplier = 1.0 + (timeProgress * 3.0); // 4x harder by end
-        
-        // Phase-specific difficulty modifiers
-        const phaseMultipliers = {
-            GEOMETRIC: 1.0,
-            ORGANIC: 1.2,
-            MECHANICAL: 1.5,
-            HYBRID: 2.0,
-            CHAOS: 2.5,
-            ENDGAME: 3.0
-        };
-        
-        this.difficultyMultiplier *= phaseMultipliers[this.currentPhase] || 1.0;
-        
-        // Audio-reactive difficulty spikes
-        if (audioManager) {
-            const audioIntensity = audioManager.getIntensityMultiplier();
-            this.difficultyMultiplier *= audioIntensity;
-            
-            // Beat-synced spawn rate increases
-            const beatStrength = audioManager.getBeatStrength();
-            this.spawnRateMultiplier = 1.0 + (beatStrength * 0.5);
-        }
-        
-        // Phase progression within current phase
-        const progressionBonus = this.phaseProgress * 0.5;
-        this.difficultyMultiplier += progressionBonus;
     }
     
     getSpawnInterval() {
@@ -125,14 +272,13 @@ export class PhaseSystem {
         
         // Calculate current spawn interval based on difficulty
         const progress = Math.min(this.difficultyMultiplier / 4.0, 1.0);
-        const interval = MathUtils.lerp(baseInterval, maxInterval, progress);
+        const interval = MathUtils.lerp(maxInterval, baseInterval, progress);
         
-        // Apply spawn rate multiplier (beat sync)
+        // Apply spawn rate multiplier (beat sync and musical events)
         return Math.max(interval / this.spawnRateMultiplier, CONFIG.SPAWN_RATE.MAX);
     }
     
     getShapeComplexity() {
-        // Return complexity level for shape spawning
         const phaseComplexity = {
             GEOMETRIC: 1,
             ORGANIC: 2,
@@ -153,36 +299,11 @@ export class PhaseSystem {
     }
     
     shouldTriggerSpecialEvent() {
-        // Trigger special events at phase boundaries
-        if (this.phaseProgress > 0.9 && Math.random() < 0.1) {
-            return {
-                type: 'phase_finale',
-                phase: this.currentPhase,
-                intensity: 1.5 + this.phaseProgress
-            };
-        }
-        
-        // Random events during chaos phase
-        if (this.currentPhase === 'CHAOS' && Math.random() < 0.05) {
-            return {
-                type: 'chaos_burst',
-                intensity: 2.0 + Math.random()
-            };
-        }
-        
-        // Endgame survival events
-        if (this.currentPhase === 'ENDGAME' && Math.random() < 0.08) {
-            return {
-                type: 'survival_wave',
-                intensity: 2.5 + this.phaseProgress
-            };
-        }
-        
+        // Legacy method - now handled by musical event system
         return null;
     }
     
     getMutationRate() {
-        // Mutation rate increases with phase progression
         const baseRate = CONFIG.DNA.MUTATION_CHANCE;
         const phaseBonus = {
             GEOMETRIC: 0,
@@ -198,7 +319,6 @@ export class PhaseSystem {
     }
     
     getReattackChance() {
-        // Reattack behavior becomes more common in later phases
         const baseChance = CONFIG.REATTACK.CHANCE;
         const phaseMultiplier = {
             GEOMETRIC: 0.5,
@@ -220,22 +340,21 @@ export class PhaseSystem {
             difficultyMultiplier: this.difficultyMultiplier,
             spawnRateMultiplier: this.spawnRateMultiplier,
             timeInPhase: Date.now() - this.phaseStartTime,
-            totalTransitions: this.phaseTransitions.length
+            totalTransitions: this.phaseTransitions.length,
+            queuedEvents: this.musicalEventQueue.length
         };
     }
     
     getPhaseHistory() {
-        return this.phaseTransitions.slice(); // Return copy
+        return this.phaseTransitions.slice();
     }
     
-    // For debugging - force phase change
     forcePhase(phaseName) {
         if (CONFIG.PHASES[phaseName]) {
             this.handlePhaseTransition(this.currentPhase, phaseName, 0);
         }
     }
     
-    // Reset for new game
     reset() {
         this.currentPhase = 'GEOMETRIC';
         this.phaseStartTime = 0;
@@ -243,5 +362,9 @@ export class PhaseSystem {
         this.difficultyMultiplier = 1.0;
         this.spawnRateMultiplier = 1.0;
         this.phaseProgress = 0;
+        this.musicalIntensityHistory = [];
+        this.coordinatedAttackCooldown = 0;
+        this.lastSpecialEventTime = 0;
+        this.musicalEventQueue = [];
     }
 }
